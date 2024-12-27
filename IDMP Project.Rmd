@@ -1,0 +1,331 @@
+---
+title: "IDMP Project"
+author: "Priyadharshan Sengutuvan"
+date: "2024-04-21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Library Loading
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(randomForest)
+library(lubridate)
+library(caret)
+
+```
+
+
+
+Visualisation : Frequency of Top 10 chemicals reported by year
+Inference: We see that Titanium dioxide is extremely dominant over other chemicals
+```{r}
+
+# Load data
+data <- read.csv("/Users/priyadharshan/Desktop/IDMP_Project/chemicals-in-cosmetics-.csv")
+
+# Convert dates
+data <- data %>%
+    mutate(InitialDateReported = mdy(InitialDateReported))
+
+# Identifying the top 10 chemicals
+top_chemicals <- data %>%
+    count(ChemicalName) %>%
+    top_n(10, n) %>%
+    pull(ChemicalName)
+
+# Aggregating data by year for these chemicals
+trends_data <- data %>%
+    filter(ChemicalName %in% top_chemicals) %>%
+    group_by(Year = year(InitialDateReported), ChemicalName) %>%
+    summarise(Reports = n(), .groups = 'drop')
+
+trends_data <- trends_data %>%
+    mutate(LegendName = sapply(str_split(ChemicalName, " "), function(x) paste(x[1:min(length(x), 2)], collapse = " ")))
+
+
+# Plot with adjusted legends
+ggplot(trends_data, aes(x = Year, y = Reports, color = LegendName)) +
+    geom_line(size = 1) +
+    geom_point(aes(shape = LegendName), size = 2, stroke = 1.5) +
+    labs(title = "Annual Reporting Frequency for Top 10 Chemicals",
+         subtitle = "Analysis based on initial report dates from 2009 to 2020",
+         x = "Year",
+         y = "Number of Reports") +
+    scale_color_manual(values = rainbow(length(unique(trends_data$LegendName)))) +
+    theme_minimal() +
+    theme(plot.margin = unit(c(1,1,1.5,1), "cm"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          legend.text = element_text(size = 8),
+          legend.key.size = unit(0.5, 'cm'),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
+
+Visualisation: Frequency of top 10 chemicals reported by year, we did a scaling by log 10
+Inference: After logging we see that the titanim dioxide is blending with the other chemicals.
+```{r}
+
+trends_data <- trends_data %>%
+    mutate(LegendName = sapply(str_split(ChemicalName, " "), function(x) paste(x[1:min(length(x), 2)], collapse = " ")))
+
+# Plot with adjusted legends and logarithmic scale
+ggplot(trends_data, aes(x = Year, y = Reports, color = LegendName)) +
+    geom_line(size = 1) +
+    geom_point(aes(shape = LegendName), size = 2, stroke = 1.5) +
+    scale_y_log10() +  # Applying logarithmic scale
+    labs(title = "Annual Reporting Frequency for Top 10 Chemicals (Log Scale)",
+         subtitle = "Analysis based on initial report dates from 2009 to 2020",
+         x = "Year",
+         y = "Log of Number of Reports") +
+    scale_color_manual(values = rainbow(length(unique(trends_data$LegendName)))) +
+    theme_minimal() +
+    theme(plot.margin = unit(c(1,1,1.5,1), "cm"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          legend.text = element_text(size = 8),
+          legend.key.size = unit(0.5, 'cm'),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+```{r}
+library(ggplot2)
+
+# Adjust the point size and line thickness
+point_size <- 2
+line_size <- 0.5
+
+# Choose a less vibrant color palette
+color_values <- c("blue", "green", "red", "cyan", "magenta", "yellow", "grey", "orange", "purple", "brown")
+
+ggplot(trends_data, aes(x = Year, y = Reports, color = ChemicalName)) +
+  geom_line(size = line_size) +
+  geom_point(aes(shape = ChemicalName), size = point_size, stroke = 1) +  # Reduced stroke and point size for clarity
+  scale_y_log10() +  # Keep the logarithmic scale
+  labs(title = "Annual Reporting Frequency for Top 10 Chemicals (Log Scale)",
+       subtitle = "Analysis based on initial report dates from 2009 to 2020",
+       x = "Year",
+       y = "Log of Number of Reports",
+       color = "Chemical Name",
+       shape = "Chemical Name") +
+  scale_color_manual(values = color_values) +  # Applied a simpler color palette
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ChemicalName, scales = 'free_y')  # Add facet wrap to create separate panels
+
+
+```
+
+Visualisation: Distribution of Toxicity Rating among the chemicals
+Inference: We see a lot of checmicals have toxicity rating of 20 to 25 
+
+Visualisation: Top 20 Frequently used chemicals
+Inference: titianium dioxide is the most frequently used chemical.
+```{r}
+
+# Convert Calculated.Toxicity.Rating to numeric if it's not already
+data$ToxicityRating <- as.numeric(as.character(data$ToxicityRating))
+
+# Filter out any values outside the range of 0 to 100
+data <- data %>% 
+  filter(ToxicityRating >= 0 & ToxicityRating <= 100)
+
+# Visualization 1: Distribution of Calculated Toxicity Ratings
+ggplot(data, aes(x = ToxicityRating)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Calculated Toxicity Ratings",
+       x = "Calculated Toxicity Rating",
+       y = "Frequency") +
+  xlim(0, 100) +  # Set x-axis limits
+  theme_minimal()
+
+# Prepare data for Visualization 2
+top_chemicals <- data %>%
+  count(ChemicalName) %>%
+  top_n(20, n) %>%
+  arrange(desc(n))
+
+# Visualization 2: Top 20 Most Common Chemicals in Products
+ggplot(top_chemicals, aes(x = reorder(ChemicalName, n), y = n)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() +
+  labs(title = "Top 20 Most Common Chemicals in Products",
+       y = "Frequency",
+       x = "Chemical Name") +
+  theme_minimal()
+
+
+```
+
+Model : Using RandomForest, the model predicts ToxicityRating and the predictors are ChemicalCount, Interaction_Tox_ChemCount, YearReported
+The low RMSE and MAE values indicate that the model's predictions are close to the actual values, while the high R-squared value indicates that the model explains a significant portion of the variance in the toxicity ratings.
+
+Overall, these metrics suggest that the model performs very well in predicting the toxicity ratings of cosmetic products.
+
+```{r}
+
+data <- read.csv("/Users/priyadharshan/Desktop/IDMP_Project/chemicals-in-cosmetics-.csv")
+
+# Data Cleaning and Imputation
+data <- data %>%
+  mutate(CSFId = if_else(is.na(CSFId), 'Unknown', as.character(CSFId)),
+         CSF = if_else(is.na(CSF), 'Unknown', as.character(CSF)),
+         BrandName = if_else(is.na(BrandName), 'Unknown', as.character(BrandName)),
+         CasNumber = if_else(is.na(CasNumber), 'Unknown', as.character(CasNumber)),
+         DiscontinuedDate = if_else(is.na(DiscontinuedDate), NA, DiscontinuedDate),
+         ChemicalDateRemoved = if_else(is.na(ChemicalDateRemoved), NA, ChemicalDateRemoved)) %>%
+  mutate(InitialDateReported = mdy(InitialDateReported),
+         MostRecentDateReported = mdy(MostRecentDateReported),
+         DiscontinuedDate = mdy(DiscontinuedDate),
+         ChemicalCreatedAt = mdy(ChemicalCreatedAt),
+         ChemicalUpdatedAt = mdy(ChemicalUpdatedAt),
+         ChemicalDateRemoved = mdy(ChemicalDateRemoved))
+
+# Feature Engineering
+data$YearReported <- year(data$InitialDateReported)
+data$Interaction_Tox_ChemCount <- data$ChemicalCount * data$ToxicityRating
+
+# Prepare the dataset for modeling
+final_data <- data %>%
+  select(ToxicityRating, ChemicalCount, Interaction_Tox_ChemCount, YearReported)
+
+# Splitting the data
+set.seed(42)
+training_rows <- createDataPartition(final_data$ToxicityRating, p=0.8, list=FALSE)
+train <- final_data[training_rows, ]
+test <- final_data[-training_rows, ]
+
+# Building the Random Forest Model
+rf_model <- randomForest(ToxicityRating ~ ., data = train, ntree=100)
+
+# Predicting on the test set
+predictions <- predict(rf_model, test)
+
+# Evaluating the Model
+rmse <- sqrt(mean((predictions - test$ToxicityRating)^2))
+mae <- mean(abs(predictions - test$ToxicityRating))
+r_squared <- summary(lm(predictions ~ test$ToxicityRating))$r.squared
+
+print(paste("Root Mean Square Error:", rmse))
+print(paste("Mean Absolute Error:", mae))
+print(paste("R-squared:", r_squared))
+
+```
+
+
+
+This code trains a Random Forest model to predict ToxicityRating using ChemicalCount and Interaction as predictors.
+```{r}
+# Load data
+
+# Display basic info and summary statistics to understand data structure and content
+glimpse(data)
+summary(data)
+
+# Select only numeric data for correlation
+numeric_data <- data %>% 
+  select(where(is.numeric))
+
+# Check for missing values in the dataset
+summarise_all(data, ~sum(is.na(.)))
+
+# Visualize histograms for all numerical data to understand distributions
+data %>%
+  select(ToxicityRating, ChemicalCount) %>%
+  gather(key = "variables", value = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) + facet_wrap(~variables, scales = 'free_x') +
+  theme_minimal()
+
+# Boxplot to check for outliers in key metrics
+data %>%
+  select(ToxicityRating, ChemicalCount) %>%
+  gather(key = "variables", value = "value") %>%
+  ggplot(aes(x = variables, y = value)) +
+  geom_boxplot() +
+  theme_minimal()
+
+data$InitialDateReported <- mdy(data$InitialDateReported)
+
+
+
+# Calculate correlation matrix
+cor_matrix <- cor(numeric_data)
+
+# Visualize the correlation matrix using a heatmap
+cor_matrix %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Variable1") %>%
+  pivot_longer(cols = -Variable1, names_to = "Variable2", values_to = "Correlation") %>%
+  ggplot(aes(x = Variable1, y = Variable2, fill = Correlation)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Data cleaning: Handling missing values by filling with median or a placeholder
+data <- data %>%
+  mutate(CSFId = if_else(is.na(CSFId), 'Unknown', as.character(CSFId)),
+         ChemicalCount = if_else(is.na(ChemicalCount), median(ChemicalCount, na.rm = TRUE), ChemicalCount))
+
+# Convert dates
+data$InitialDateReported <- mdy(data$InitialDateReported)
+
+# Feature engineering: Creating an interaction term to possibly enhance model predictions
+data <- mutate(data, Interaction = ChemicalCount * ToxicityRating)
+
+# Preparing data for modeling
+set.seed(42)
+training_rows <- createDataPartition(data$ToxicityRating, p=0.8, list=FALSE)
+train <- data[training_rows, ]
+test <- data[-training_rows, ]
+
+# Model training using Random Forest
+rf_model <- randomForest(ToxicityRating ~ ChemicalCount + Interaction, data = train)
+
+# Model predictions
+predictions <- predict(rf_model, test)
+
+# Evaluate model performance with RMSE and R-squared
+rmse <- sqrt(mean((predictions - test$ToxicityRating)^2))
+r_squared <- summary(lm(predictions ~ test$ToxicityRating))$r.squared
+print(paste("Root Mean Square Error:", rmse))
+print(paste("R-squared:", r_squared))
+
+# Plot actual vs predicted values to visualize model performance
+plot(test$ToxicityRating, predictions, main = "Actual vs Predicted Toxicity Ratings",
+     xlab = "Actual", ylab = "Predicted", pch = 19)
+abline(0, 1, col = "red")
+
+# Visualize feature importances
+#This line visualizes the feature importances of the variables in the Random Forest model using a barplot
+importance <- importance(rf_model)
+barplot(importance, main="Feature Importance", horiz=TRUE, las=1)
+
+
+
+```
+
+
+
